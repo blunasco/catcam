@@ -3,7 +3,7 @@ import os
 import time
 from datetime import datetime
 from pathlib import Path
-
+from notifier import notify_cat
 # --- Config ---
 CAT_CASCADE_PATH = os.getenv("CAT_CASCADE_PATH", "haarcascade_frontalcatface.xml")
 USE_ROI_FOR_CATS = True        # scan only lower half of frame for cats (helps reduce human FP)
@@ -87,13 +87,32 @@ while True:
 
     # 6) Snapshot on confirmed cat + cooldown
     now = time.time()
-    if consec_cat_frames >= PERSIST_FRAMES and (now - last_snapshot_ts) >= COOLDOWN_SEC:
+    if consec_cat_frames >= PERSIST_FRAMES and (now - last_snapshot_ts) >= COOLDOWN_SEC and best_cat is not None:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out = MEDIA_DIR / f"cat_{ts}.jpg"
-        cv2.imwrite(str(out), frame)
-        print(f"📸 Cat snapshot saved: {out}")
+        # Save full-frame evidence
+        full_out = MEDIA_DIR / f"cat_{ts}.jpg"
+        cv2.imwrite(str(full_out), frame)
+
+        # Optional: also save a cropped cat patch for quick viewing
+        x, y, w, h = best_cat
+        cat_crop = frame[max(y,0):y+h, max(x,0):x+w].copy()
+        crop_out = MEDIA_DIR / f"cat_{ts}_crop.jpg"
+        if cat_crop.size > 0:
+            cv2.imwrite(str(crop_out), cat_crop)
+
+        print(f"📸 Cat snapshot saved: {full_out}")
+        if cat_crop.size > 0:
+            print(f"📎 Cat crop saved: {crop_out}")
+
         last_snapshot_ts = now
-        consec_cat_frames = 0  # reset so you need persistence again
+        consec_cat_frames = 0  # reset persistence
+
+        # Notify (best-effort; don't crash on failures)
+        try:
+            notify_cat(camera_id="local_cam", image_path=full_out, confidence=round(best_conf or 0.0, 4))
+        except Exception as e:
+            print(f"⚠️ Notify failed: {e}")
+
 
     # Show window if GUI is available (no-op if headless install)
     if hasattr(cv2, "imshow"):
