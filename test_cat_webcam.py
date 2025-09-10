@@ -73,6 +73,17 @@ while True:
     # 3) Veto: remove cat boxes that overlap a human face
     cats = [c for c in cats if all(iou(c, f) < HUMAN_IOU_THRESH for f in faces)]
 
+    # 3b) Pick best cat for snapshot/notify
+    best_conf = None
+    best_cat = None
+    if len(cats) > 0:
+        H, W = gray.shape[:2]
+        for (x, y, w, h) in cats:
+            area_ratio = (w * h) / float(W * H)
+            if best_conf is None or area_ratio > best_conf:
+                best_conf = area_ratio
+                best_cat = (x, y, w, h)
+                
     # 4) Persistence
     if len(cats) > 0:
         consec_cat_frames += 1
